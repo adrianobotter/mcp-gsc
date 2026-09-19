@@ -35,6 +35,8 @@ Set `GSC_SKIP_OAUTH=true` to force service account mode and skip OAuth entirely.
 | `GSC_CREDENTIALS_PATH` | — | Path to service account JSON key file |
 | `GSC_OAUTH_CLIENT_SECRETS_FILE` | `client_secrets.json` | Path to OAuth client secrets file |
 | `GSC_SKIP_OAUTH` | `false` | Set `true` to skip OAuth and use service account only |
+| `GSC_CREDENTIALS_JSON` | — | Service account key as inline JSON or base64 (for hosts without file mounts, e.g. Railway); implies `GSC_SKIP_OAUTH` |
+| `PORT` | — | Injected by PaaS hosts (Railway/Render/Fly); used as the SSE port and switches the default bind to `0.0.0.0` |
 
 ## Adding a new tool
 

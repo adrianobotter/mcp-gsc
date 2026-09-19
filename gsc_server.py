@@ -5,6 +5,8 @@ import os
 import json
 import sys
 import shutil
+import base64
+import tempfile
 from datetime import datetime, timedelta
 
 # Fail loudly on unsupported Python. The mcp/FastMCP dependency requires 3.11+.
@@ -56,8 +58,43 @@ def _expand_path(path: Optional[str]) -> Optional[str]:
 # Then try looking in the script directory and current working directory as fallbacks
 GSC_CREDENTIALS_PATH = _expand_path(os.environ.get("GSC_CREDENTIALS_PATH"))
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _materialize_inline_credentials() -> Optional[str]:
+    """Write GSC_CREDENTIALS_JSON to a temp file and return its path.
+
+    Platforms like Railway, Render or Fly have no convenient way to mount a
+    secret file, so the service account key is supplied as an environment
+    variable instead — either raw JSON or base64-encoded JSON.
+    """
+    raw = os.environ.get("GSC_CREDENTIALS_JSON")
+    if not raw or not raw.strip():
+        return None
+    raw = raw.strip()
+    if not raw.startswith("{"):
+        try:
+            raw = base64.b64decode(raw).decode("utf-8")
+        except Exception as e:
+            raise ValueError(
+                "GSC_CREDENTIALS_JSON is set but is neither raw JSON nor valid "
+                f"base64-encoded JSON: {e}"
+            )
+    try:
+        json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"GSC_CREDENTIALS_JSON does not contain valid JSON: {e}")
+
+    fd, path = tempfile.mkstemp(prefix="gsc-credentials-", suffix=".json")
+    with os.fdopen(fd, "w") as f:
+        f.write(raw)
+    os.chmod(path, 0o600)
+    return path
+
+
+INLINE_CREDENTIALS_PATH = _materialize_inline_credentials()
 POSSIBLE_CREDENTIAL_PATHS = [
-    GSC_CREDENTIALS_PATH,  # First try the environment variable if set
+    INLINE_CREDENTIALS_PATH,  # GSC_CREDENTIALS_JSON (env-only hosts like Railway)
+    GSC_CREDENTIALS_PATH,  # Then the environment variable if set
     os.path.join(SCRIPT_DIR, "service_account_credentials.json"),
     os.path.join(os.getcwd(), "service_account_credentials.json"),
     # Add any other potential paths here
@@ -87,6 +124,10 @@ if os.path.exists(_OLD_TOKEN) and not os.path.exists(TOKEN_FILE):
 
 # Environment variable to skip OAuth authentication
 SKIP_OAUTH = os.environ.get("GSC_SKIP_OAUTH", "").lower() in ("true", "1", "yes")
+# Inline credentials imply a headless host where the interactive OAuth flow
+# cannot complete — skip straight to the service account.
+if INLINE_CREDENTIALS_PATH:
+    SKIP_OAUTH = True
 
 # Safety flag for destructive operations (add_site, delete_site, delete_sitemap).
 # Default is false — set GSC_ALLOW_DESTRUCTIVE=true to enable these tools.
@@ -1737,9 +1778,13 @@ async def reauthenticate() -> str:
 def main():
     """Entry point for the MCP server. Supports stdio (default) and SSE transports."""
     transport = os.environ.get("MCP_TRANSPORT", "stdio").lower()
-    host = os.environ.get("MCP_HOST", "127.0.0.1")
+    # PaaS providers (Railway, Render, Heroku, Fly) inject the listening port as
+    # PORT and require binding on 0.0.0.0 for the health check to pass.
+    platform_port = os.environ.get("PORT")
+    host = os.environ.get("MCP_HOST") or ("0.0.0.0" if platform_port else "127.0.0.1")
+    raw_port = os.environ.get("MCP_PORT") or platform_port or "3001"
     try:
-        port = int(os.environ.get("MCP_PORT", "3001"))
+        port = int(raw_port)
     except ValueError:
         raise ValueError("MCP_PORT must be an integer")
 

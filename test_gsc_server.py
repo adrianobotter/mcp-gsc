@@ -4,6 +4,7 @@ Tests for gsc_server.py.
 All Google API calls are mocked — no real credentials are needed to run these tests.
 Run with: pytest test_gsc_server.py -v
 """
+import base64
 import importlib
 import io
 import json
@@ -999,6 +1000,75 @@ class TestStdoutClean(unittest.TestCase):
 
         stdout_output = captured.getvalue()
         self.assertEqual(stdout_output, "", f"Unexpected stdout: {stdout_output!r}")
+
+
+class TestInlineCredentials(unittest.TestCase):
+    """GSC_CREDENTIALS_JSON support for hosts without file mounts (Railway, etc.)."""
+
+    SERVICE_ACCOUNT = {"type": "service_account", "client_email": "x@y.iam.gserviceaccount.com"}
+
+    def _reimport(self, env):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = {"GSC_CONFIG_DIR": tmpdir, **env}
+            with patch.dict(os.environ, env, clear=False):
+                if "gsc_server" in sys.modules:
+                    del sys.modules["gsc_server"]
+                import gsc_server as mod
+                return mod
+
+    def test_raw_json_is_written_to_a_file_and_skips_oauth(self):
+        mod = self._reimport({"GSC_CREDENTIALS_JSON": json.dumps(self.SERVICE_ACCOUNT)})
+        try:
+            self.assertIsNotNone(mod.INLINE_CREDENTIALS_PATH)
+            with open(mod.INLINE_CREDENTIALS_PATH) as f:
+                self.assertEqual(json.load(f), self.SERVICE_ACCOUNT)
+            self.assertTrue(mod.SKIP_OAUTH)
+            self.assertEqual(mod.POSSIBLE_CREDENTIAL_PATHS[0], mod.INLINE_CREDENTIALS_PATH)
+        finally:
+            os.unlink(mod.INLINE_CREDENTIALS_PATH)
+
+    def test_base64_json_is_decoded(self):
+        encoded = base64.b64encode(json.dumps(self.SERVICE_ACCOUNT).encode()).decode()
+        mod = self._reimport({"GSC_CREDENTIALS_JSON": encoded})
+        try:
+            with open(mod.INLINE_CREDENTIALS_PATH) as f:
+                self.assertEqual(json.load(f), self.SERVICE_ACCOUNT)
+        finally:
+            os.unlink(mod.INLINE_CREDENTIALS_PATH)
+
+    def test_invalid_value_raises(self):
+        with self.assertRaises(ValueError):
+            self._reimport({"GSC_CREDENTIALS_JSON": "not json or base64 !!"})
+
+    def test_unset_leaves_path_none(self):
+        env = {"GSC_CREDENTIALS_JSON": ""}
+        mod = self._reimport(env)
+        self.assertIsNone(mod.INLINE_CREDENTIALS_PATH)
+
+
+class TestTransportBinding(unittest.TestCase):
+    """PaaS hosts inject PORT and require binding 0.0.0.0."""
+
+    def _main_with(self, env):
+        import gsc_server as mod
+        with patch.dict(os.environ, env, clear=False):
+            with patch.object(mod.mcp, "run") as run, \
+                 patch.object(mod.mcp, "settings", MagicMock()) as settings:
+                mod.main()
+                return settings, run
+
+    def test_port_env_var_binds_all_interfaces(self):
+        settings, run = self._main_with({"MCP_TRANSPORT": "sse", "PORT": "8080",
+                                         "MCP_HOST": "", "MCP_PORT": ""})
+        self.assertEqual(settings.host, "0.0.0.0")
+        self.assertEqual(settings.port, 8080)
+        run.assert_called_once_with(transport="sse")
+
+    def test_explicit_mcp_vars_win_over_platform_port(self):
+        settings, _ = self._main_with({"MCP_TRANSPORT": "sse", "PORT": "8080",
+                                       "MCP_HOST": "127.0.0.1", "MCP_PORT": "3001"})
+        self.assertEqual(settings.host, "127.0.0.1")
+        self.assertEqual(settings.port, 3001)
 
 
 if __name__ == "__main__":
