@@ -441,7 +441,8 @@ MCP_TRANSPORT=sse MCP_HOST=0.0.0.0 MCP_PORT=3001 python gsc_server.py
 |---|---|---|
 | `MCP_TRANSPORT` | `stdio` | Set to `sse` for network/remote use |
 | `MCP_HOST` | `127.0.0.1` | Host to bind |
-| `MCP_PORT` | `3001` | Port to bind |
+| `MCP_PORT` | `3001` | Port to bind (falls back to `PORT` when set by the host) |
+| `GSC_CREDENTIALS_JSON` | — | Service account key as inline JSON or base64, for hosts without file mounts; implies `GSC_SKIP_OAUTH` |
 
 ### Docker
 
@@ -457,6 +458,23 @@ docker run \
   -p 3001:3001 \
   mcp-gsc
 ```
+
+### Railway
+
+Railway builds from the `Dockerfile` (config in `railway.json`) and injects `PORT`; the server binds `0.0.0.0` automatically when `PORT` is set.
+
+1. Create a Railway service from this repo (`New Project → Deploy from GitHub repo`).
+2. Set these service variables:
+
+   | Variable | Value |
+   |---|---|
+   | `MCP_TRANSPORT` | `sse` |
+   | `GSC_CREDENTIALS_JSON` | the full contents of your service account JSON key |
+
+   Railway has no file mounts, so the key is passed inline via `GSC_CREDENTIALS_JSON` (raw JSON or base64). Setting it also skips OAuth, since the browser login flow cannot complete on a headless host. Grant the service account's `client_email` access to your GSC properties.
+3. `Settings → Networking → Generate Domain`, then point your MCP client at `https://<your-app>.up.railway.app/sse`.
+
+`PORT` is provided by Railway — do not set `MCP_PORT` unless you want to override it.
 
 ---
 
