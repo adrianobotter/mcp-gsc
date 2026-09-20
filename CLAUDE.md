@@ -27,7 +27,7 @@ Set `GSC_SKIP_OAUTH=true` to force service account mode and skip OAuth entirely.
 
 | Variable | Default | Description |
 |---|---|---|
-| `MCP_TRANSPORT` | `stdio` | Set to `sse` for remote/Docker/network use |
+| `MCP_TRANSPORT` | `stdio` | `sse` (endpoint `/sse`) or `streamable-http` (endpoint `/mcp`) for remote/Docker/network use; `http` is a legacy alias for `sse` |
 | `MCP_HOST` | `127.0.0.1` | Host to bind when `MCP_TRANSPORT=sse` |
 | `MCP_PORT` | `3001` | Port to bind when `MCP_TRANSPORT=sse` |
 | `GSC_DATA_STATE` | `all` | `all` = matches GSC dashboard; `final` = confirmed data only (2–3 day lag) |

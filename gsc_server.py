@@ -1776,7 +1776,7 @@ async def reauthenticate() -> str:
 
 
 def main():
-    """Entry point for the MCP server. Supports stdio (default) and SSE transports."""
+    """Entry point for the MCP server. Supports stdio (default), SSE and streamable HTTP."""
     transport = os.environ.get("MCP_TRANSPORT", "stdio").lower()
     # PaaS providers (Railway, Render, Heroku, Fly) inject the listening port as
     # PORT and require binding on 0.0.0.0 for the health check to pass.
@@ -1790,7 +1790,7 @@ def main():
 
     if transport == "stdio":
         mcp.run(transport="stdio")
-    elif transport in {"sse", "http"}:
+    elif transport in {"sse", "http", "streamable-http", "streamable_http", "streamable"}:
         # mcp SDK >= 1.27 removed the host/port kwargs from run() (they must be
         # set on mcp.settings instead) and enabled DNS-rebinding protection with
         # a Host allowlist of localhost only — which 421s the remote/Docker
@@ -1802,11 +1802,16 @@ def main():
             mcp.settings.transport_security.enable_dns_rebinding_protection = False
         except Exception:
             pass
-        mcp.run(transport="sse")
+        # "http" stays an alias for SSE so existing remote deployments keep
+        # working; the modern transport is opt-in under its own names.
+        if transport in {"streamable-http", "streamable_http", "streamable"}:
+            mcp.run(transport="streamable-http")
+        else:
+            mcp.run(transport="sse")
     else:
         raise ValueError(
-            f"Unknown MCP_TRANSPORT '{transport}'. "
-            "Use 'stdio' (default) or 'sse'."
+            f"Unknown MCP_TRANSPORT '{transport}'. Use 'stdio' (default), "
+            "'sse', or 'streamable-http'."
         )
 
 

@@ -1064,6 +1064,18 @@ class TestTransportBinding(unittest.TestCase):
         self.assertEqual(settings.port, 8080)
         run.assert_called_once_with(transport="sse")
 
+    def test_streamable_http_transport(self):
+        settings, run = self._main_with({"MCP_TRANSPORT": "streamable-http", "PORT": "8080",
+                                         "MCP_HOST": "", "MCP_PORT": ""})
+        self.assertEqual(settings.host, "0.0.0.0")
+        self.assertEqual(settings.port, 8080)
+        run.assert_called_once_with(transport="streamable-http")
+
+    def test_http_stays_an_sse_alias(self):
+        _, run = self._main_with({"MCP_TRANSPORT": "http", "PORT": "8080",
+                                  "MCP_HOST": "", "MCP_PORT": ""})
+        run.assert_called_once_with(transport="sse")
+
     def test_explicit_mcp_vars_win_over_platform_port(self):
         settings, _ = self._main_with({"MCP_TRANSPORT": "sse", "PORT": "8080",
                                        "MCP_HOST": "127.0.0.1", "MCP_PORT": "3001"})
